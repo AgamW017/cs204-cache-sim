@@ -1,0 +1,17 @@
+# PIN tool build rules for folder-per-tool layout
+
+TOOL_NAMES := $(basename $(notdir $(wildcard $(CURDIR)/pintools/*/*.cpp)))
+TOOLS := $(foreach t,$(TOOL_NAMES),$(CURDIR)/pintools/$(t)/$(t)$(PINTOOL_SUFFIX))
+
+.PHONY: pintool tools $(TOOL_NAMES)
+
+pintool: $(TOOLS)
+
+tools: pintool
+
+# Build a single tool by name, e.g. `make Week1`
+$(TOOL_NAMES): %: $(CURDIR)/pintools/%/%$(PINTOOL_SUFFIX)
+
+# Compile each tool inside its own folder
+$(CURDIR)/pintools/%/%$(PINTOOL_SUFFIX): $(CURDIR)/pintools/%/%.cpp
+	$(TOOL_CXX) $(TOOL_CPPFLAGS) $(TOOL_CXXFLAGS) -I$(PIN_INCLUDE) $< -o $@ $(TOOL_LDFLAGS) $(TOOL_LIB_PATH) $(TOOL_LIBS)
