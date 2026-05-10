@@ -1,0 +1,40 @@
+# PIN Tool Default Build Rules
+# For pre-compiled PIN Kit
+
+TOOL_ROOTS ?= MyPinTool
+TOOLS := $(addprefix $(OUTDIR)/,$(addsuffix $(PINTOOL_SUFFIX),$(TOOL_ROOTS)))
+TEST_ROOTS ?= $(TOOL_ROOTS)
+
+# Default sources
+ifeq ($(TOOL),)
+    ifneq ($(SRC),)
+        TOOL := $(basename $(notdir $(SRC)))
+    else
+        TOOL := MyPinTool
+    endif
+endif
+
+# Find source file
+TOOL_SRC := $(firstword $(wildcard $(TOOL).cpp) $(wildcard $(TOOL).C) $(wildcard $(TOOL).c))
+
+ifeq ($(TOOL_SRC),)
+    $(error Cannot find source for tool $(TOOL))
+endif
+
+# Build tool
+$(OUTDIR)/$(TOOL)$(PINTOOL_SUFFIX): $(TOOL_SRC)
+	@mkdir -p $(OBJDIR) $(OUTDIR)
+	$(TOOL_CXX) $(TOOL_CPPFLAGS) $(TOOL_CXXFLAGS) -I$(PIN_INCLUDE) $< -o $@ $(TOOL_LDFLAGS) $(TOOL_LIB_PATH) $(TOOL_LIBS)
+
+# Generic rules
+%$(PINTOOL_SUFFIX): %.cpp
+	@mkdir -p $(OBJDIR) $(OUTDIR)
+	$(TOOL_CXX) $(TOOL_CPPFLAGS) $(TOOL_CXXFLAGS) -I$(PIN_INCLUDE) $< -o $@ $(TOOL_LDFLAGS) $(TOOL_LIB_PATH) $(TOOL_LIBS)
+
+# Clean
+clean:
+	rm -rf $(OBJDIR)
+	rm -f $(TOOLS)
+	rm -f *.o *.obj *.dll *.so
+
+.PHONY: all clean
