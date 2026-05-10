@@ -20,5 +20,5 @@ nopincc-%:
 	$(MAKE) -f $(CURDIR)/makefile.nopincc TARGET=$(TARGET) TOOL=$*
 
 clean:
-	rm -f $(TOOLS)
+	rm -rf $(CURDIR)/build
 	$(MAKE) -f $(CURDIR)/makefile.nopincc TARGET=$(TARGET) clean

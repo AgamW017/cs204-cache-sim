@@ -1,7 +1,8 @@
 # PIN tool build rules for flat pintools folder
 
 TOOL_NAMES := $(basename $(notdir $(wildcard $(CURDIR)/pintools/*.cpp)))
-TOOLS := $(foreach t,$(TOOL_NAMES),$(CURDIR)/pintools/$(t)$(PINTOOL_SUFFIX))
+BUILD_DIR := $(CURDIR)/build
+TOOLS := $(foreach t,$(TOOL_NAMES),$(BUILD_DIR)/$(t)$(PINTOOL_SUFFIX))
 
 # Tool configuration (from makefile.nopincc)
 CC ?= gcc
@@ -10,7 +11,7 @@ PINKIT ?= $(CURDIR)/pin_kit
 PINRTDIR := $(PINKIT)/$(TARGET)/pinrt
 OBJ_SUFFIX := .o
 PINTOOL_SUFFIX := .so
-OBJDIR := obj-$(TARGET)
+OBJDIR := $(BUILD_DIR)
 TOOL_CXX := $(CC)
 TOOL_LINKER := $(CC)
 TOOL_CPPFLAGS := -DPIN_CRT=1 -DPIN_RT -DTARGET_LINUX -D_LIBCPP_HAS_MUSL_LIBC -D_GNU_SOURCE
@@ -83,13 +84,13 @@ tools: pintool
 
 # Build a single tool by name, e.g. `make Week1`
 $(TOOL_NAMES):
-	$(MAKE) $(CURDIR)/pintools/$@$(PINTOOL_SUFFIX)
+	$(MAKE) $(BUILD_DIR)/$@$(PINTOOL_SUFFIX)
 
 # Compile each tool in flat pintools folder
 define TOOL_BUILD_RULE
-$(CURDIR)/pintools/$(1)$(PINTOOL_SUFFIX): $(CURDIR)/pintools/$(1).cpp | $(OBJDIR)
-	$(TOOL_CXX) $(TOOL_CPPFLAGS) $(TOOL_PIN_INCLUDES) $(TOOL_SYSTEM_INCLUDES) $(TOOL_CXXFLAGS) $(TOOL_USER_CXXFLAGS) -c -o $(OBJDIR)/$(1).o $$<
-	$(TOOL_LINKER) $(TOOL_LDFLAGS) -o $$@ $(TOOL_START_FILES) $(OBJDIR)/$(1).o $(TOOL_LIBS) $(TOOL_END_FILES)
+$(BUILD_DIR)/$(1)$(PINTOOL_SUFFIX): $(CURDIR)/pintools/$(1).cpp | $(OBJDIR)
+	$(TOOL_CXX) $(TOOL_CPPFLAGS) $(TOOL_PIN_INCLUDES) $(TOOL_SYSTEM_INCLUDES) $(TOOL_CXXFLAGS) $(TOOL_USER_CXXFLAGS) -c -o $(OBJDIR)/$(1)$(OBJ_SUFFIX) $$<
+	$(TOOL_LINKER) $(TOOL_LDFLAGS) -o $$@ $(TOOL_START_FILES) $(OBJDIR)/$(1)$(OBJ_SUFFIX) $(TOOL_LIBS) $(TOOL_END_FILES)
 endef
 
 $(OBJDIR):
@@ -97,6 +98,3 @@ $(OBJDIR):
 
 $(foreach t,$(TOOL_NAMES),$(eval $(call TOOL_BUILD_RULE,$(t))))
 
-clean:
-	rm -rf $(OBJDIR)
-	rm -f $(TOOLS)
