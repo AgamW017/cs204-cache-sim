@@ -10,6 +10,8 @@ KNOB<int> KnobBlockSize(KNOB_MODE_WRITEONCE, "pintool", "b", "64", "Block size")
 
 
 int CACHE_SIZE, ASSOCIATIVITY, BLOCK_SIZE, NUM_SETS;
+FILE* output = nullptr;
+const char* kOutputPath = "traces/week2-lru.log";
 
 struct CacheLine {
     ADDRINT tag;
@@ -87,6 +89,11 @@ VOID Instruction(INS ins, VOID* v)
 VOID Fini(INT32 code, VOID* v)
 {
     UINT64 total = hits + misses;
+    fprintf(output, "LRU\nHits: %lu\nMisses: %lu\n", hits, misses);
+    if (total) fprintf(output, "HitRate: %.2f%%\n", (100.0 * hits) / total);
+    fflush(output);
+    fclose(output);
+
     printf("LRU\nHits: %lu\nMisses: %lu\n", hits, misses);
     if (total) printf("HitRate: %.2f%%\n", (100.0 * hits) / total);
 }
@@ -94,6 +101,13 @@ VOID Fini(INT32 code, VOID* v)
 int main(int argc, char* argv[])
 {
     if (PIN_Init(argc, argv)) return -1;
+
+    output = fopen(kOutputPath, "w");
+    if (!output)
+    {
+        perror(kOutputPath);
+        return -1;
+    }
 
     CACHE_SIZE = KnobCacheSize.Value();
     ASSOCIATIVITY = KnobAssoc.Value();

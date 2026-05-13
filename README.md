@@ -46,6 +46,12 @@ Instrument a program with a PIN tool:
 ./pin_kit/pin -t ./pintools/Week1.so -- <program> [args]
 ```
 
+Generated artifacts are written under `traces/` with consistent names:
+
+- `week1-trace.csv` for the Week 1 memory trace
+- `week2-lru.log`, `week2-fifo.log`, and `week2-random.log` for the Week 2 policies
+- `week4-rrip-sp.log` for the Week 4 prefetching policy
+
 ## Roadmap
 
 The project is planned in four stages:

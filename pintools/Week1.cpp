@@ -12,6 +12,7 @@
 #include "pin.H"
 
 FILE* trace;
+const char* kTracePath = "traces/week1-trace.csv";
 
 // LRU stack for reuse distance
 std::list<ADDRINT> stackList;
@@ -239,7 +240,12 @@ int main(int argc, char* argv[])
 {
     if (PIN_Init(argc, argv)) return -1;
 
-    trace = fopen("trace1.out", "w");
+    trace = fopen(kTracePath, "w");
+    if (!trace)
+    {
+        perror(kTracePath);
+        return -1;
+    }
 
     INS_AddInstrumentFunction(Instruction, 0);
     PIN_AddFiniFunction(Fini, 0);
