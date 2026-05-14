@@ -75,34 +75,14 @@ st.markdown(
         color: #1d4ed8;
         font-size: 0.85rem;
     }
-    .config-chip {
-        display: inline-block;
-        padding: 0.35rem 0.6rem;
-        border-radius: 0.6rem;
-        font-weight: 700;
-        font-size: 0.8rem;
-        margin-bottom: 0.4rem;
-        color: #0f172a;
-    }
-    .chip-size {
-        background: rgba(191, 219, 254, 0.9);
-        border: 1px solid rgba(59, 130, 246, 0.4);
-    }
-    .chip-assoc {
-        background: rgba(187, 247, 208, 0.9);
-        border: 1px solid rgba(34, 197, 94, 0.4);
-    }
-    .chip-block {
-        background: rgba(254, 202, 202, 0.9);
-        border: 1px solid rgba(239, 68, 68, 0.4);
-    }
     #run-row-anchor + div[data-testid="stHorizontalBlock"] {
         gap: 0.8rem;
     }
     #run-row-anchor + div[data-testid="stHorizontalBlock"] > div {
-        border-radius: 10px;
+        border-radius: 6px;
         padding: 0.6rem;
         aspect-ratio: 1 / 1;
+        min-height: 120px;
         display: flex;
         flex-direction: column;
         justify-content: center;
@@ -125,9 +105,20 @@ st.markdown(
         background: #fed7aa;
         border: 1px solid rgba(249, 115, 22, 0.35);
     }
+    #run-row-anchor + div[data-testid="stHorizontalBlock"] .stSelectbox {
+        width: 100%;
+    }
+    #run-row-anchor + div[data-testid="stHorizontalBlock"] .stSelectbox div[data-baseweb="select"] {
+        background: transparent;
+        border: 1px solid rgba(15, 23, 42, 0.15);
+        border-radius: 6px;
+    }
+    #run-row-anchor + div[data-testid="stHorizontalBlock"] .stSelectbox div[data-baseweb="select"] > div {
+        background: transparent;
+    }
     #run-row-anchor + div[data-testid="stHorizontalBlock"] .stButton > button {
         height: 100%;
-        border-radius: 10px;
+        border-radius: 6px;
         padding: 0.6rem 0.8rem;
         background: #fb923c;
         color: #0f172a;
@@ -575,7 +566,6 @@ def render_policy_section(uploaded_policy_files: list[Any]) -> None:
         st.caption("Upload one or more result logs for LRU, FIFO, Random, Belady, or custom policies.")
 
     st.markdown("### Run Simulators")
-    st.caption("One cache configuration is applied to all tools. Targets are hardcoded.")
 
     st.markdown("<div id='run-row-anchor'></div>", unsafe_allow_html=True)
     size_col, assoc_col, block_col, run_col = st.columns(4)
@@ -583,9 +573,9 @@ def render_policy_section(uploaded_policy_files: list[Any]) -> None:
     assoc_options = [1, 2, 4, 8, 16]
     block_options = [16, 32, 64, 128, 256]
 
-    size_col.markdown("<div class='config-chip chip-size'>Cache size</div>", unsafe_allow_html=True)
-    assoc_col.markdown("<div class='config-chip chip-assoc'>Associativity</div>", unsafe_allow_html=True)
-    block_col.markdown("<div class='config-chip chip-block'>Block size</div>", unsafe_allow_html=True)
+    size_col.markdown("<div style='text-align:center'><strong>Cache size</strong></div>", unsafe_allow_html=True)
+    assoc_col.markdown("<div style='text-align:center'><strong>Associativity</strong></div>", unsafe_allow_html=True)
+    block_col.markdown("<div style='text-align:center'><strong>Block size</strong></div>", unsafe_allow_html=True)
 
     cache_size = size_col.selectbox(
         "Cache size (bytes)",
@@ -622,14 +612,12 @@ def render_policy_section(uploaded_policy_files: list[Any]) -> None:
             "-b",
             str(int(block_size)),
         ]
-        missing_tools: list[str] = []
         missing_pin: list[str] = []
         commands: list[dict[str, Any]] = []
 
         def add_pintool(name: str, tool_file: str, extra_args: list[str]) -> None:
             tool_path = REPO_ROOT / "build" / tool_file
             if not tool_path.exists():
-                missing_tools.append(tool_file)
                 return
             if not pin_path:
                 missing_pin.append(tool_file)
@@ -651,7 +639,6 @@ def render_policy_section(uploaded_policy_files: list[Any]) -> None:
         def add_standalone(name: str, tool_file: str, extra_args: list[str]) -> None:
             tool_path = REPO_ROOT / "build" / tool_file
             if not tool_path.exists():
-                missing_tools.append(tool_file)
                 return
             command = [str(tool_path), *extra_args]
             commands.append({
@@ -675,13 +662,22 @@ def render_policy_section(uploaded_policy_files: list[Any]) -> None:
             week4_args = base_args + ["-o", str(output_path)]
             add_pintool(f"Week4 {policy}", meta["tool"], week4_args)
 
-        trace_arg = ["-t", str(SAMPLE_TRACE_DIR / "week1-trace.csv")]
-        add_standalone("Week3 Optimal", "Week3-Belady-Optimal", base_args + trace_arg)
-
-        if missing_tools:
-            st.warning(
-                "Missing build outputs: " + ", ".join(sorted(set(missing_tools)))
-            )
+        optimal_command = [
+            "./build/Week3-Belady-Optimal.so",
+            "-c",
+            str(int(cache_size)),
+            "-a",
+            str(int(associativity)),
+            "-b",
+            str(int(block_size)),
+            "-t",
+            "traces/week1-trace.csv",
+        ]
+        commands.append({
+            "name": "Week3 Optimal",
+            "command": optimal_command,
+            "display": _command_to_string(optimal_command),
+        })
         if missing_pin:
             st.error("PIN binary not found under pin_kit/. Unable to run: " + ", ".join(sorted(set(missing_pin))))
 

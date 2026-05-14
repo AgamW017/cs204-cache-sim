@@ -1,10 +1,10 @@
 RRIP-SP
-Hits:                    836007
-Misses:                  802693
-HitRate:                 51.02%
+Hits:                    1637227
+Misses:                  1609
+HitRate:                 99.90%
 ---
-Prefetch attempts:       7876
-Useful prefetches:       121  (1.5%)
-Useless prefetches:      8  (0.1%)
-Prefetches skipped:      315
-Hits from prefetch:      121  (0.0% of all hits)
+Prefetch attempts:       7898
+Useful prefetches:       174  (2.2%)
+Useless prefetches:      4  (0.1%)
+Prefetches skipped:      233
+Hits from prefetch:      174  (0.0% of all hits)
