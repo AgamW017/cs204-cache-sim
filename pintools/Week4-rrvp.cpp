@@ -17,27 +17,21 @@ KNOB<std::string> KnobOutputPath(
 int CACHE_SIZE, ASSOCIATIVITY, BLOCK_SIZE, NUM_SETS;
 FILE* output = nullptr;
 
-// ─── RRPV constants ───────────────────────────────────────────────────────────
-//  0 = near-future  (just hit)
-//  2 = distant      (demand miss insertion point)
-//  3 = far-future   (prefetch probation / eviction candidate)
 #define RRPV_HIT      0
 #define RRPV_DEMAND   2
 #define RRPV_PREFETCH 3
 #define RRPV_MAX      3
 
-// ─── Cache line ───────────────────────────────────────────────────────────────
 struct CacheLine {
     ADDRINT tag;
     BOOL    valid;
-    int     rrpv;        // 0..3
-    BOOL    prefetched;  // still "on probation" (for useful-prefetch accounting)
+    int     rrpv; // 0 - 3
+    BOOL    prefetched;
 };
 
 std::vector<std::vector<CacheLine>> cache;
 
-// ─── Global stride predictor ──────────────────────────────────────────────────
-//  confidence: 0 = init, 1 = transient, 2 = steady (fire prefetch)
+//  confidence: 0 = init, 1 = transient, 2 = steady 
 struct StridePredictor {
     ADDRINT last_addr;
     ADDRINT last_stride;
@@ -45,18 +39,15 @@ struct StridePredictor {
     BOOL    initialized;
 } sp = {0, 0, 0, FALSE};
 
-// ─── Stats ────────────────────────────────────────────────────────────────────
 UINT64 hits              = 0;
 UINT64 misses            = 0;
-UINT64 prefetch_attempts = 0;   // times the predictor fired
-UINT64 useful_prefetches = 0;   // prefetched line was later hit
-UINT64 useless_prefetches= 0;   // prefetched line evicted without a hit
-UINT64 prefetch_skipped  = 0;   // no RRPV=3/empty slot → skipped to protect hot lines
-UINT64 demand_hits_from_prefetch = 0; // subset of hits that came from prefetched lines
+UINT64 prefetch_attempts = 0;
+UINT64 useful_prefetches = 0; 
+UINT64 useless_prefetches= 0;
+UINT64 prefetch_skipped  = 0;
+UINT64 demand_hits_from_prefetch = 0;
 
-// ─── Cache helpers ────────────────────────────────────────────────────────────
 
-// Find way index holding tag, or -1.
 static inline int find_way(int set_idx, ADDRINT tag)
 {
     auto &s = cache[set_idx];
@@ -65,24 +56,21 @@ static inline int find_way(int set_idx, ADDRINT tag)
     return -1;
 }
 
-// RRIP eviction: find victim way (modifies RRPVs via aging).
-// Returns the way index to replace.
 static int rrip_victim(int set_idx)
 {
     auto &s = cache[set_idx];
     while (true) {
         for (int w = 0; w < ASSOCIATIVITY; w++)
-            if (!s[w].valid)        return w;   // empty slot first
+            if (!s[w].valid)        return w;
         for (int w = 0; w < ASSOCIATIVITY; w++)
-            if (s[w].rrpv == RRPV_MAX) return w; // furthest-future victim
+            if (s[w].rrpv == RRPV_MAX) return w;
         // Age all lines by 1
         for (int w = 0; w < ASSOCIATIVITY; w++)
             s[w].rrpv++;
     }
 }
 
-// Find a way suitable for a prefetch (empty or RRPV=3), without evicting hot lines.
-// Returns way index, or -1 if the set is too hot to prefetch into.
+// Find a way suitable for a prefetch without evicting hot lines.
 static int prefetch_victim(int set_idx)
 {
     auto &s = cache[set_idx];
@@ -90,10 +78,9 @@ static int prefetch_victim(int set_idx)
         if (!s[w].valid) return w;
     for (int w = 0; w < ASSOCIATIVITY; w++)
         if (s[w].rrpv == RRPV_MAX) return w;
-    return -1;   // no safe slot — skip prefetch
+    return -1;
 }
 
-// ─── Stride predictor update ──────────────────────────────────────────────────
 static void update_stride(ADDRINT addr)
 {
     if (!sp.initialized) {
@@ -112,7 +99,6 @@ static void update_stride(ADDRINT addr)
     sp.last_addr = addr;
 }
 
-// ─── Main prefetch insertion ──────────────────────────────────────────────────
 static void try_prefetch()
 {
     if (sp.confidence < 2) return;
@@ -124,7 +110,6 @@ static void try_prefetch()
 
     prefetch_attempts++;
 
-    // Already in cache? No work needed.
     if (find_way((int)pf_set_idx, pf_tag) != -1) return;
 
     int w = prefetch_victim((int)pf_set_idx);
@@ -132,17 +117,15 @@ static void try_prefetch()
 
     auto &line = cache[pf_set_idx][w];
 
-    // If we're displacing an unused prefetch, count it as useless.
     if (line.valid && line.prefetched)
         useless_prefetches++;
 
     line.tag        = pf_tag;
     line.valid      = TRUE;
-    line.rrpv       = RRPV_PREFETCH;   // on probation
+    line.rrpv       = RRPV_PREFETCH;
     line.prefetched = TRUE;
 }
 
-// ─── Per-access logic (called by PIN) ─────────────────────────────────────────
 VOID AccessMemory(VOID* addr)
 {
     ADDRINT address   = (ADDRINT)addr;
@@ -153,34 +136,30 @@ VOID AccessMemory(VOID* addr)
     int way = find_way(set_idx, tag);
 
     if (way != -1) {
-        // ── HIT ──────────────────────────────────────────────────────────────
         hits++;
         auto &line = cache[set_idx][way];
         if (line.prefetched) {
             useful_prefetches++;
             demand_hits_from_prefetch++;
-            line.prefetched = FALSE;    // consumed — no longer on probation
+            line.prefetched = FALSE; 
         }
-        line.rrpv = RRPV_HIT;           // promote to near-future
+        line.rrpv = RRPV_HIT; 
 
         update_stride(address);
-        // Prefetch on hits too — keeps the predictor warm.
         try_prefetch();
 
     } else {
-        // ── MISS ─────────────────────────────────────────────────────────────
         misses++;
 
         int victim = rrip_victim(set_idx);
         auto &line = cache[set_idx][victim];
 
-        // Evicting an unused prefetch → count useless.
         if (line.valid && line.prefetched)
             useless_prefetches++;
 
         line.tag        = tag;
         line.valid      = TRUE;
-        line.rrpv       = RRPV_DEMAND;  // demand insertion point
+        line.rrpv       = RRPV_DEMAND;
         line.prefetched = FALSE;
 
         update_stride(address);
@@ -188,7 +167,6 @@ VOID AccessMemory(VOID* addr)
     }
 }
 
-// ─── PIN instrumentation (identical structure to FIFO tool) ──────────────────
 VOID Instruction(INS ins, VOID* v)
 {
     UINT32 memOperands = INS_MemoryOperandCount(ins);

@@ -67,8 +67,8 @@ static int belady_victim(int set_idx)
 // call belady for each access
 static void process_access(ADDRINT block_addr)
 {
-    int     set_idx = (int)(block_addr % (ADDRINT)NUM_SETS);
-    ADDRINT tag     = block_addr / (ADDRINT)NUM_SETS;
+    int set_idx = (int)(block_addr % (ADDRINT)NUM_SETS);
+    ADDRINT tag = block_addr / (ADDRINT)NUM_SETS;
 
     auto &s = cache[set_idx];
 
