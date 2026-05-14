@@ -50,6 +50,7 @@ Generated artifacts are written under `traces/` with consistent names:
 
 - `week1-trace.csv` for the Week 1 memory trace
 - `week2-lru.log`, `week2-fifo.log`, and `week2-random.log` for the Week 2 policies
+- `week3-belady-optimal.log` (trace replay) and `week3-belady-lookahead.log` (PIN lookahead) for Week 3
 - `week4-rrip-sp.log` for the Week 4 prefetching policy
 
 ## Roadmap
@@ -73,6 +74,9 @@ The project is planned in four stages:
 │   ├── Week2-CacheFIFO.cpp
 │   ├── Week2-CacheLRU.cpp
 │   └── Week2-CacheRnd.cpp
+│   ├── Week3-Belady-With-Trace.cpp
+│   ├── Week3-Belady-Without-Trace.cpp
+│   └── Week4.cpp
 ├── tests/                   # Test programs and binaries
 │   ├── asm/                 # Assembly test sources
 │   └── bin/                 # Compiled test binaries

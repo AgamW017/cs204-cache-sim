@@ -1,0 +1,5 @@
+Belady Optimal (true)
+Cache:   8192 bytes, 2-way, 64-byte blocks, 64 sets
+Hits:    836546
+Misses:  802154
+HitRate: 51.05%

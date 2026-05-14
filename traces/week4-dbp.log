@@ -1,0 +1,14 @@
+DBP (default counter=2 → optimistic/live)
+Hits:                     836177
+Misses:                   802523
+HitRate:                  51.03%
+---
+Dead insertions:          800499  (99.7% of misses)
+Live insertions:          2024  (0.3% of misses)
+---
+Prediction accuracy:      99.93%
+  Correct dead (TP):      800272
+  Correct live (TN):      1597
+  Wrong dead  (FP):       227  (evicted early but was reused)
+  Wrong live  (FN):       299  (kept too long, never reused)
+Unique PCs in pred table: 672

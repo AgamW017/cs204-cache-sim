@@ -1,0 +1,8 @@
+2Q (A1 quota=25%,  A1_MAX=1 ways)
+Hits:                435807
+Misses:              1202893
+HitRate:             26.59%
+---
+Promotions (A1→Am):  402467  (33.5% of misses)
+A1 evictions:        800407  (66.5% of evictions)
+Am evictions:        402358  (33.5% of evictions)
