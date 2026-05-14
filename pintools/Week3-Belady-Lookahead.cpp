@@ -3,7 +3,7 @@
 #include <deque>
 #include "pin.H"
 
-// ─── Knobs ────────────────────────────────────────────────────────────────────
+// params
 KNOB<int> KnobCacheSize  (KNOB_MODE_WRITEONCE, "pintool", "c", "8192", "Cache size in bytes");
 KNOB<int> KnobAssoc      (KNOB_MODE_WRITEONCE, "pintool", "a", "2",    "Associativity");
 KNOB<int> KnobBlockSize  (KNOB_MODE_WRITEONCE, "pintool", "b", "64",   "Block size in bytes");
@@ -13,49 +13,39 @@ int CACHE_SIZE, ASSOCIATIVITY, BLOCK_SIZE, NUM_SETS, WINDOW_SIZE;
 static FILE* output = nullptr;
 static const char* kOutputPath = "traces/week3-belady-lookahead.log";
 
-// ─── Cache ────────────────────────────────────────────────────────────────────
+// cache data structure
 struct CacheLine {
     ADDRINT tag;
     BOOL    valid;
 };
 std::vector<std::vector<CacheLine>> cache;
 
-// ─── Lookahead buffer ─────────────────────────────────────────────────────────
-// Layout while processing:
-//   lookahead is already pop_front'd, so lookahead[0..size-1] = the future window.
-// During collection (before processing):
-//   lookahead.front() = current access, rest = future.
-std::deque<ADDRINT> lookahead;   // holds block addresses (not raw byte addresses)
+// stores [0 to size-1] future window, holds block addresses
+std::deque<ADDRINT> lookahead;
 
-// ─── Stats ────────────────────────────────────────────────────────────────────
 UINT64 hits   = 0;
 UINT64 misses = 0;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// Reconstruct the block address stored in way w of set set_idx.
+// get block address
 static inline ADDRINT block_of(int set_idx, int way)
 {
     return cache[set_idx][way].tag * (ADDRINT)NUM_SETS + (ADDRINT)set_idx;
 }
 
-// Distance to the next access of block_addr in the current lookahead window.
-// lookahead[0..size-1] is the future at the time this is called (current already popped).
-// Returns WINDOW_SIZE+1 as "infinity" (not found = will never be used in window).
+// search lookahead for our current access and otherwise return theoretical infinity (WINDOW_SIZE + 1)
 static int next_use_distance(ADDRINT block_addr)
 {
     int sz = (int)lookahead.size();
     for (int i = 0; i < sz; i++)
-        if (lookahead[i] == block_addr) return i + 1;   // +1: distance 1 = very next access
-    return WINDOW_SIZE + 1;   // ∞ — not seen in window
+        if (lookahead[i] == block_addr) return i + 1;
+    return WINDOW_SIZE + 1;
 }
 
-// Belady victim selection for a set.
-// Returns the way index whose cached line has the furthest next use.
-// Tie among "never reused in window" lines → first found (all equally optimal).
+// select what to remove
 static int belady_victim(int set_idx)
 {
-    // Prefer empty ways first (compulsory miss — no eviction cost).
+    // compulsory miss, no eviction
     for (int w = 0; w < ASSOCIATIVITY; w++)
         if (!cache[set_idx][w].valid) return w;
 
@@ -67,17 +57,14 @@ static int belady_victim(int set_idx)
         if (dist > max_dist) {
             max_dist = dist;
             victim   = w;
-            // Short-circuit: true infinity — no need to check others.
-            // (Any line with no reuse in window is equally optimal to evict.)
+
             if (dist == WINDOW_SIZE + 1) break;
         }
     }
     return victim;
 }
 
-// ─── Core simulation step ─────────────────────────────────────────────────────
-// Called with block_addr = the access to process.
-// At call time, lookahead already has this entry popped, so it holds the future.
+// call belady for each access
 static void process_access(ADDRINT block_addr)
 {
     int     set_idx = (int)(block_addr % (ADDRINT)NUM_SETS);
@@ -85,7 +72,7 @@ static void process_access(ADDRINT block_addr)
 
     auto &s = cache[set_idx];
 
-    // ── Hit check ────────────────────────────────────────────────────────────
+    // hit
     for (int w = 0; w < ASSOCIATIVITY; w++) {
         if (s[w].valid && s[w].tag == tag) {
             hits++;
@@ -93,29 +80,26 @@ static void process_access(ADDRINT block_addr)
         }
     }
 
-    // ── Miss: Belady eviction ─────────────────────────────────────────────────
+    // miss
     misses++;
     int victim = belady_victim(set_idx);
     s[victim].tag   = tag;
     s[victim].valid = TRUE;
 }
 
-// ─── PIN callback: buffer every access ───────────────────────────────────────
 VOID AccessMemory(VOID* addr)
 {
     ADDRINT block_addr = (ADDRINT)addr / (ADDRINT)BLOCK_SIZE;
     lookahead.push_back(block_addr);
 
-    // Once we have W+1 entries the front has a full W-entry future window.
     if ((int)lookahead.size() > WINDOW_SIZE) {
         ADDRINT current = lookahead.front();
         lookahead.pop_front();
-        // lookahead now holds exactly the W future accesses after `current`.
+        // load lookahead with W  accesses after `current`
         process_access(current);
     }
 }
 
-// ─── PIN instrumentation ──────────────────────────────────────────────────────
 VOID Instruction(INS ins, VOID* v)
 {
     UINT32 memOperands = INS_MemoryOperandCount(ins);
@@ -132,12 +116,10 @@ VOID Instruction(INS ins, VOID* v)
     }
 }
 
-// ─── Drain tail + print results ───────────────────────────────────────────────
 VOID Fini(INT32 code, VOID* v)
 {
-    // Drain the remaining buffered accesses.
-    // Each iteration the future window shrinks by 1 — still valid Belady
-    // reasoning (we simply know less about the future near the end of the trace).
+
+    // caveat - belady simulator has less context window towards the end but this is ok as no more cache acccess will occur thereafter
     while (!lookahead.empty()) {
         ADDRINT current = lookahead.front();
         lookahead.pop_front();
@@ -160,7 +142,6 @@ VOID Fini(INT32 code, VOID* v)
         printf("HitRate: %.2f%%\n", (100.0 * hits) / total);
 }
 
-// ─── Entry point ─────────────────────────────────────────────────────────────
 int main(int argc, char* argv[])
 {
     if (PIN_Init(argc, argv)) return -1;

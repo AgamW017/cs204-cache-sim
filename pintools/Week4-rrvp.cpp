@@ -4,7 +4,6 @@
 #include <string>
 #include "pin.H"
 
-// ─── Knobs (identical to your FIFO tool) ─────────────────────────────────────
 KNOB<int> KnobCacheSize (KNOB_MODE_WRITEONCE, "pintool", "c", "8192", "Cache size in bytes");
 KNOB<int> KnobAssoc     (KNOB_MODE_WRITEONCE, "pintool", "a", "2",    "Associativity");
 KNOB<int> KnobBlockSize (KNOB_MODE_WRITEONCE, "pintool", "b", "64",   "Block size in bytes");

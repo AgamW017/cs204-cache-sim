@@ -1,22 +1,3 @@
-/*
- * 2q.cpp — 2Q Cache Replacement Policy
- *
- * Two queues per set:
- *   A1 (probation) — FIFO. All new lines enter here.
- *   Am (hot)       — LRU.  Lines promoted here after a second touch.
- *
- * Eviction rule:
- *   If A1 is over quota (size > A1_MAX): evict A1 front (FIFO).
- *   Else:                                evict Am  front (LRU).
- *   If Am is empty:                      evict A1  front regardless.
- *
- * Knobs:
- *   -c  cache size in bytes      (default 8192)
- *   -a  associativity            (default 2)
- *   -b  block size in bytes      (default 64)
- *   -q  A1 quota as % of ways    (default 25 → 1 way in a 4-way set)
- */
-
 #include <stdio.h>
 #include <vector>
 #include <deque>
@@ -24,7 +5,6 @@
 #include <string>
 #include "pin.H"
 
-// ─── Knobs ────────────────────────────────────────────────────────────────────
 KNOB<int> KnobCacheSize (KNOB_MODE_WRITEONCE, "pintool", "c", "8192", "Cache size in bytes");
 KNOB<int> KnobAssoc     (KNOB_MODE_WRITEONCE, "pintool", "a", "2",    "Associativity");
 KNOB<int> KnobBlockSize (KNOB_MODE_WRITEONCE, "pintool", "b", "64",   "Block size in bytes");
@@ -37,10 +17,9 @@ KNOB<std::string> KnobOutputPath(
     "Output log path");
 
 int CACHE_SIZE, ASSOCIATIVITY, BLOCK_SIZE, NUM_SETS;
-int A1_MAX;   // max A1 way-slots per set derived from -q
+int A1_MAX;
 FILE* output = nullptr;
 
-// ─── Cache line ───────────────────────────────────────────────────────────────
 enum LineState { INVALID_S, A1_S, AM_S };
 
 struct CacheLine {
@@ -50,30 +29,27 @@ struct CacheLine {
 
 std::vector<std::vector<CacheLine>> cache;
 
-// ─── Per-set queues ───────────────────────────────────────────────────────────
 struct SetQueues {
-    std::deque<ADDRINT> a1;   // FIFO: front = oldest (eviction candidate)
-    std::deque<ADDRINT> am;   // LRU:  front = LRU victim, back = MRU
+    std::deque<ADDRINT> a1; // FIFO
+    std::deque<ADDRINT> am; // LRU
 };
 std::vector<SetQueues> queues;
 
-// ─── Stats ────────────────────────────────────────────────────────────────────
 UINT64 hits         = 0;
 UINT64 misses       = 0;
-UINT64 promotions   = 0;   // A1 → Am (line confirmed useful on second touch)
-UINT64 a1_evictions = 0;   // lines evicted from A1 without ever being promoted
-UINT64 am_evictions = 0;   // lines evicted from Am
+UINT64 promotions   = 0;
+UINT64 a1_evictions = 0;
+UINT64 am_evictions = 0;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// Remove first occurrence of tag from a deque.
+// Remove first occurrence of tag from a deque
 static void dq_erase(std::deque<ADDRINT> &dq, ADDRINT tag)
 {
     auto it = std::find(dq.begin(), dq.end(), tag);
     if (it != dq.end()) dq.erase(it);
 }
 
-// Find way index holding tag (hit check — valid lines only).
+// Find way index holding tag
 static int find_valid_way(int si, ADDRINT tag)
 {
     for (int w = 0; w < ASSOCIATIVITY; w++)
@@ -82,8 +58,7 @@ static int find_valid_way(int si, ADDRINT tag)
     return -1;
 }
 
-// Find way index by tag regardless of state (used after queue eviction to
-// locate the physical slot — tag is guaranteed present).
+// Find way index by tag
 static int find_way_by_tag(int si, ADDRINT tag)
 {
     for (int w = 0; w < ASSOCIATIVITY; w++)
@@ -91,7 +66,7 @@ static int find_way_by_tag(int si, ADDRINT tag)
     return 0;   // unreachable when queues are consistent
 }
 
-// Find an invalid (empty) way, or -1 if none.
+// Find an invalid way
 static int find_free_way(int si)
 {
     for (int w = 0; w < ASSOCIATIVITY; w++)
@@ -99,7 +74,6 @@ static int find_free_way(int si)
     return -1;
 }
 
-// ─── Main access handler ──────────────────────────────────────────────────────
 VOID AccessMemory(VOID *addr)
 {
     ADDRINT block = (ADDRINT)addr / (ADDRINT)BLOCK_SIZE;
@@ -112,34 +86,32 @@ VOID AccessMemory(VOID *addr)
     int way = find_valid_way(si, tag);
 
     if (way != -1) {
-        // ── HIT ──────────────────────────────────────────────────────────────
         hits++;
         if (s[way].state == A1_S) {
-            // Second touch on a probation line → promote to hot queue (MRU end).
+            // promote to hot queue (MRU).
             dq_erase(q.a1, tag);
             q.am.push_back(tag);
             s[way].state = AM_S;
             promotions++;
         } else {
-            // Hit in hot queue → refresh to MRU end.
+            // refresh to MRU end.
             dq_erase(q.am, tag);
             q.am.push_back(tag);
         }
         return;
     }
 
-    // ── MISS ─────────────────────────────────────────────────────────────────
     misses++;
 
     int victim = find_free_way(si);
 
     if (victim == -1) {
-        // Choose eviction source:
-        //   A1 over quota → evict from A1 (keep A1 at target size).
-        //   A1 at/under quota, Am non-empty → evict LRU from Am.
-        //   Am empty (all ways in A1) → must evict from A1 anyway.
+        // Eviction Policy:
+        //   A1 over quota → evict from A1 (keep A1 at target size)
+        //   A1 at/under quota, Am non-empty → evict LRU from Am
+        //   Am empty (all ways in A1) → must evict from A1 anyway
         ADDRINT vtag;
-        if ((int)q.a1.size() > A1_MAX) {
+        if ((int)q.a1.size() >= A1_MAX) {
             vtag = q.a1.front(); q.a1.pop_front();
             a1_evictions++;
         } else if (!q.am.empty()) {
@@ -152,13 +124,12 @@ VOID AccessMemory(VOID *addr)
         victim = find_way_by_tag(si, vtag);
     }
 
-    // All new lines enter A1 (probation).
+    // All new lines enter A1
     s[victim].tag   = tag;
     s[victim].state = A1_S;
     q.a1.push_back(tag);
 }
 
-// ─── PIN instrumentation ──────────────────────────────────────────────────────
 VOID Instruction(INS ins, VOID *v)
 {
     UINT32 memOperands = INS_MemoryOperandCount(ins);
@@ -238,7 +209,7 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Error: -q must be between 1 and 99\n");
         return 1;
     }
-    // Always guarantee at least 1 A1 slot even on low associativity.
+    // at least 1 A1 slot even on low associativity.
     A1_MAX = std::max(1, (ASSOCIATIVITY * q) / 100);
 
     printf("[2Q init] sets=%d, assoc=%d, A1_MAX=%d\n",
